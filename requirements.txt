@@ -1,0 +1,6 @@
+openpyxl~=3.0.7
+holidays~=0.18
+exchangelib~=4.9.0
+pypac~=0.16.1
+msal~=1.20.0
+oauthlib~=3.2.2
