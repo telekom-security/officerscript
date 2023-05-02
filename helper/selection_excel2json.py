@@ -57,7 +57,8 @@ if __name__ == '__main__':
 
         for officer, row in officers.items():
             if not officer_dynamics.get(officer.strip()):
-                officer_dynamics[officer.strip()] = {'officer_count': 0, 'officer_extreme_count': 0}
+                if not officer_dynamics.get(officer.strip()):
+                    officer_dynamics[officer.strip()] = {'officer_count': 0, 'officer_extreme_count': 0}
 
             for column in range(1, 31 + 1):
                 if sheet.cell(row=1, column=column + 2).value != column:

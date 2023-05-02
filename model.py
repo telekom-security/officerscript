@@ -45,7 +45,3 @@ class Officer:
     @officer_extreme_count.setter
     def officer_extreme_count(self, officer_extreme_count):
         self.__officer_extreme_count = officer_extreme_count
-
-
-if __name__ == '__main__':
-    raise Exception("Do NOT execute this file")

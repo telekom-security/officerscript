@@ -1,0 +1,15 @@
+[
+  {
+    "name": "Person 1",
+    "tag": "1Pe",
+    "status": true,
+    "country": "de",
+    "state": "nw"
+  }, {
+    "name": "Person 2",
+    "tag": "2Pe",
+    "status": false,
+    "country": "de",
+    "state": "nw"
+  }
+]

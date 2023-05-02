@@ -27,6 +27,9 @@ if __name__ == "__main__":
         if officer_data.get('officer_extreme_count') < lowest_extreme_count or lowest_extreme_count == -1:
             lowest_extreme_count = officer_data.get('officer_extreme_count')
 
+    print("lowest_count", lowest_count)
+    print("lowest_extreme_count", lowest_extreme_count)
+
     for officer_name, officer_data in dynamics.items():
         if officer_name not in officer_static or not officer_static[officer_name].get('status'):
             continue

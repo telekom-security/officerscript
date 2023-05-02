@@ -18,6 +18,8 @@ holidays = {}  # this dict will contain a list of the official holidays per stat
 bridging_days = {}  # this dict will contain the bridging days per state (calculated by the official holidays)
 officer_times_weekly = {}  # init variable officer_times_weekly which saves the count per officer per week
 last_friday_officers = []  # init variable to save the officers for last friday
+MAX_DUTIE_PER_WEEK = 3
+OFFICERS_PER_DAY = 2
 
 
 # function which returns the next_monday based on the last_monday
@@ -47,9 +49,9 @@ def process_week(monday):
 
     for day in days_in_week:
         if day.weekday() == 0:
-            process_day(monday, day, last_friday_officers)
+            process_day(monday=monday, day=day, excepted_officers=last_friday_officers)
         else:
-            process_day(monday, day)
+            process_day(monday=monday, day=day)
 
         if day.weekday() == 4:
             last_friday_officers = selected_officers_for_day.get(day)
@@ -81,7 +83,6 @@ def load_officer_who_could_work(day, excepted_officers=None):
     return can_work
 
 
-# todo: try refactor this function so the code is more readable and the count of officers per day is variable
 # function which is invoked 5 times per process_week call to process the 5 workdays
 def process_day(monday, day, excepted_officers=None):
     # init the variable selected_officers_for_day for the day with an empty list, so the officers can be added
@@ -97,88 +98,47 @@ def process_day(monday, day, excepted_officers=None):
         return
 
     # init the variable officer_times_weekly_by_count which holds information how many times an officers had duty
-    officer_times_weekly_by_count = {0: [], 1: [], 2: []}
+    officer_times_weekly_by_count = {i: [] for i in range(0, MAX_DUTIE_PER_WEEK)}
 
     for officer in can_work:
-        if officer_times_weekly[monday].get(officer) == 0:
-            officer_times_weekly_by_count[0].append(officer)
-        elif officer_times_weekly[monday].get(officer) == 1:
-            officer_times_weekly_by_count[1].append(officer)
-        elif officer_times_weekly[monday].get(officer) == 2:
-            officer_times_weekly_by_count[2].append(officer)
+        officer_times_weekly_by_count[officer_times_weekly[monday].get(officer)].append(officer)
 
-    # the need_just_one_more holds information if there was already one officer chosen and just one more is needed
-    need_just_one_more = False
+    officers_needed = OFFICERS_PER_DAY
 
     # try to lower the officer per week rate by choosing the officers which no / fewer duties first
-    for x_sessions in range(0, 2 + 1):
+    for x_sessions in range(MAX_DUTIE_PER_WEEK):
         officers_with_x_sessions_this_week = officer_times_weekly_by_count[x_sessions]
 
         # the list gets shuffled so officer duty does not depend on the position in the alphabet
         random.shuffle(officers_with_x_sessions_this_week)
 
-        if len(officers_with_x_sessions_this_week) >= 2:
-            # if there are 2 or more officers qualifying for the day
-            # the one with the fewest general officer count is chosen
-            sorted_possible_officers = sorted(officers_with_x_sessions_this_week, key=lambda x: x.officer_count)
+        # the one with the fewest general officer count is chosen
+        sorted_possible_officers = sorted(officers_with_x_sessions_this_week, key=lambda x: x.officer_count)
 
-            # if the day is a week extrema e.g. Friday & Monday, the extrema priority will apply
-            if day.weekday() in [0, 4]:
-                sorted_possible_officers = sorted(officers_with_x_sessions_this_week,
-                                                  key=lambda x: x.officer_extreme_count)
+        # if the day is a week extrema e.g. Friday & Monday, the extrema priority will apply
+        if day.weekday() in [0, 4]:
+            sorted_possible_officers = sorted(officers_with_x_sessions_this_week,
+                                              key=lambda x: x.officer_extreme_count)
 
-            if need_just_one_more:
-                if selected_officers_for_day[day][0].country == 'DE' or \
-                        sorted_possible_officers[0].country == 'DE':
-                    set_officer(monday, day, sorted_possible_officers[0])
-                    break  # this means the officers for this day were successfully chosen
-                else:
-                    sorted_possible_officers.pop(0)
-                    while sorted_possible_officers:
-                        if sorted_possible_officers[0].country == 'DE':
-                            set_officer(monday, day, sorted_possible_officers[0])
-                            break
-                        else:
-                            sorted_possible_officers.pop(0)
-                    if sorted_possible_officers:
-                        break
+        while officers_needed > 0 and sorted_possible_officers:
+            possible_officer = sorted_possible_officers.pop(0)
 
-            else:
-                set_officer(monday, day, sorted_possible_officers[0])
-                if sorted_possible_officers[0].country == 'DE' or sorted_possible_officers[1].country == 'DE':
-                    set_officer(monday, day, sorted_possible_officers[1])
-                    break  # this means the officers for this day were successfully chosen
-                else:
-                    sorted_possible_officers.pop(0)
-                    sorted_possible_officers.pop(1)
-                    while sorted_possible_officers:
-                        if sorted_possible_officers[0].country == 'DE':
-                            set_officer(monday, day, sorted_possible_officers[0])
-                            break
-                        else:
-                            sorted_possible_officers.pop(0)
-                    if sorted_possible_officers:
-                        break
+            # check for min one german person per day
+            # skip if possible is from outside germany and there is no german officer for this day selected yet
+            if possible_officer.country != 'DE' and \
+                    not any(officer.country == 'DE' for officer in selected_officers_for_day[day]) and \
+                    len(selected_officers_for_day[day]) == OFFICERS_PER_DAY - 1:
+                continue
 
-        elif len(officers_with_x_sessions_this_week) == 1:
-            # if there is only one qualifying person, he will be officer
-            if need_just_one_more:
-                # if already selected officer is not from de, the officer who is currently checked should be from de
-                if selected_officers_for_day[day][0].country == 'DE' or \
-                        officers_with_x_sessions_this_week[0].country == 'DE':
-                    set_officer(monday, day, officers_with_x_sessions_this_week[0])
-                    break  # this means the officers for this day were successfully chosen
-            else:
-                set_officer(monday, day, officers_with_x_sessions_this_week[0])
-                need_just_one_more = True  # this means there is one more officer needed for the day
+            # choose this officer
+            set_officer(monday, day, possible_officer)
+            officers_needed -= 1
 
-    if len(selected_officers_for_day[day]) == 0:
-        print(f'[WARNING] No officer officer for {get_day_str(day)}')
-        # because of week limit of max 3 and/or the rule that min. 1 officer has to be from de
+        if officers_needed == 0:
+            break
 
-    if len(selected_officers_for_day[day]) == 1:
-        print(f'[WARNING] Just one officer for {get_day_str(day)}')
-        # because of week limit of max 3 and/or the rule that min. 1 officer has to be from de
+    if len(selected_officers_for_day[day]) < OFFICERS_PER_DAY:
+        print(f'[WARNING] Just {len(selected_officers_for_day[day])} officer(s) for {get_day_str(day)}')
 
 
 # function which is executed every time an officer for a day is chosen

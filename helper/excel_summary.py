@@ -15,7 +15,6 @@ blocked = []
 ################################################################
 sheetname_regex = '({})-(0[1-9]|1[012])'.format(YEAR)
 
-
 if __name__ == '__main__':
     bridging_days = json.load(open("../data/bridging_days.json"))  # source for bridging_days
     if not bridging_days:
@@ -133,6 +132,10 @@ if __name__ == '__main__':
                 excel_worksheet_normal.cell(row=officer_row_map_normal.get(officer), column=1).value = officer
             if officer_row_map_normal.get(officer):
                 excel_worksheet_normal.cell(row=officer_row_map_normal.get(officer), column=i + 2).value = count
+            else:
+                officer_row_map_normal[officer] = len(officer_row_map_normal) + 2
+                excel_worksheet_normal.cell(row=officer_row_map_normal.get(officer), column=1).value = officer
+                excel_worksheet_normal.cell(row=officer_row_map_normal.get(officer), column=i + 2).value = count
 
     officer_row_map_extreme = {}
     for i, (month, officers) in enumerate(officer_dynamics_monthly_extreme.items()):
@@ -142,6 +145,10 @@ if __name__ == '__main__':
                 officer_row_map_extreme[officer] = y + 2
                 excel_worksheet_extreme.cell(row=officer_row_map_extreme.get(officer), column=1).value = officer
             if officer_row_map_extreme.get(officer):
+                excel_worksheet_extreme.cell(row=officer_row_map_extreme.get(officer), column=i + 2).value = count
+            else:
+                officer_row_map_extreme[officer] = len(officer_row_map_extreme) + 2
+                excel_worksheet_extreme.cell(row=officer_row_map_extreme.get(officer), column=1).value = officer
                 excel_worksheet_extreme.cell(row=officer_row_map_extreme.get(officer), column=i + 2).value = count
 
     excel_destination_workbook.remove(excel_destination_workbook['Sheet'])
