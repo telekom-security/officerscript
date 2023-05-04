@@ -6,18 +6,17 @@ from model import Officer
 
 ##########################################################
 # INPUT:
-START_DATE = datetime.date(day=1, month=5, year=2023)  # has to be a monday
-END_DATE = datetime.date(day=30, month=6, year=2023)  # has to be a friday
+START_DATE = datetime.date(day=3, month=7, year=2023)  # has to be a monday
+END_DATE = datetime.date(day=29, month=9, year=2023)  # has to be a friday
 ##########################################################
 
 
 # define global variables:
-officers = []  # this list will be filled with officer objects which holds their static, vacation and dynamic data
-selected_officers_for_day = {}  # this dict will contain a list of selected officers per day
 holidays = {}  # this dict will contain a list of the official holidays per state
 bridging_days = {}  # this dict will contain the bridging days per state (calculated by the official holidays)
+officers = []  # this list will be filled with officer objects which holds their static, vacation and dynamic data
+selected_officers_for_day = {}  # this dict will contain a list of selected officers per day
 officer_times_weekly = {}  # init variable officer_times_weekly which saves the count per officer per week
-last_friday_officers = []  # init variable to save the officers for last friday
 MAX_DUTIE_PER_WEEK = 3
 OFFICERS_PER_DAY = 2
 
@@ -45,37 +44,53 @@ def process_week(monday):
     holidays_nrw = [datetime.datetime.strptime(day, '%Y-%m-%d').date() for day in holidays.get('DE').get('NW')]
     days_in_week = [day for day in days_in_week if day not in holidays_nrw]
 
-    global last_friday_officers
-
     for day in days_in_week:
-        if day.weekday() == 0:
-            process_day(monday=monday, day=day, excepted_officers=last_friday_officers)
-        else:
-            process_day(monday=monday, day=day)
-
-        if day.weekday() == 4:
-            last_friday_officers = selected_officers_for_day.get(day)
+        process_day(monday=monday, day=day)
 
 
-def load_officer_who_could_work(day, excepted_officers=None):
+def load_officer_who_could_work(day):
     can_work = []
 
     for officer in officers:
-
         # check if officer is on vacation
         if officer.vacation and get_day_str(day) in officer.vacation:
             continue
 
         # check if officer is in a state where a holiday is ongoing
-        if get_day_str(day) in holidays.get(officer.country).get(officer.state):
-            continue
-
-        # check if the officer was working on the last friday if a monday is to be checked
-        if excepted_officers and officer in excepted_officers:
-            continue
+        if holidays.get(officer.country):
+            if get_day_str(day) in holidays.get(officer.country).get(officer.state):
+                continue
 
         if not officer.status:
             continue
+
+        if officer in selected_officers_for_day.get(day, []):
+            continue  # skip officer if he was already selected for this day (for partial generation)
+
+        if officer in selected_officers_for_day.get(day - datetime.timedelta(days=1), []):
+            continue  # skip officer if he was working yesterday
+        if officer in selected_officers_for_day.get(day + datetime.timedelta(days=1), []):
+            continue  # skip officer if he will work tomorrow (for partial generation)
+
+        if day.weekday() == 0:  # monday
+            if officer in selected_officers_for_day.get(day - datetime.timedelta(days=3), []):
+                continue  # skip officer if he was working last friday
+            if officer in selected_officers_for_day.get(day - datetime.timedelta(days=7), []):
+                continue  # skip officer if he was working last monday
+            if officer in selected_officers_for_day.get(day + datetime.timedelta(days=4), []):
+                continue  # skip officer if he will be working on next friday (for partial generation)
+            if officer in selected_officers_for_day.get(day + datetime.timedelta(days=7), []):
+                continue  # skip officer if he will be working on next monday (for partial generation)
+
+        if day.weekday() == 4:  # friday
+            if officer in selected_officers_for_day.get(day - datetime.timedelta(days=4), []):
+                continue  # skip officer if he was working last monday
+            if officer in selected_officers_for_day.get(day - datetime.timedelta(days=7), []):
+                continue  # skip officer if he was working last friday
+            if officer in selected_officers_for_day.get(day + datetime.timedelta(days=3), []):
+                continue  # skip officer if he will work next monday (for partial generation)
+            if officer in selected_officers_for_day.get(day + datetime.timedelta(days=7), []):
+                continue  # skip officer if he will work next friday (for partial generation)
 
         # if there is no exclusion criteria
         can_work.append(officer)
@@ -84,18 +99,15 @@ def load_officer_who_could_work(day, excepted_officers=None):
 
 
 # function which is invoked 5 times per process_week call to process the 5 workdays
-def process_day(monday, day, excepted_officers=None):
+def process_day(monday, day):
     # init the variable selected_officers_for_day for the day with an empty list, so the officers can be added
-    selected_officers_for_day[day] = []
+    if not selected_officers_for_day.get(day):
+        selected_officers_for_day[day] = []
 
     # init the variable can_work which will contain all officers who can work on the selected date e.g. are not
     # on vacation or on holiday
     # if the selected date is a monday, the officers of last friday are not in the list
-    can_work = load_officer_who_could_work(day, excepted_officers)
-
-    if not can_work or len(can_work) == 1:
-        print(f'No officer / only one officer for {get_day_str(day)} because of vacation and holidays')
-        return
+    can_work = load_officer_who_could_work(day)
 
     # init the variable officer_times_weekly_by_count which holds information how many times an officers had duty
     officer_times_weekly_by_count = {i: [] for i in range(0, MAX_DUTIE_PER_WEEK)}
@@ -103,7 +115,12 @@ def process_day(monday, day, excepted_officers=None):
     for officer in can_work:
         officer_times_weekly_by_count[officer_times_weekly[monday].get(officer)].append(officer)
 
-    officers_needed = OFFICERS_PER_DAY
+    officers_needed = OFFICERS_PER_DAY - len(selected_officers_for_day[day])
+    print(f'[DEBUG] Officers needed for {get_day_str(day)}: {officers_needed}')
+
+    if len(can_work) < officers_needed:
+        print(f'[WARNING] Not enough possible officers for {get_day_str(day)}')
+        return
 
     # try to lower the officer per week rate by choosing the officers which no / fewer duties first
     for x_sessions in range(MAX_DUTIE_PER_WEEK):
@@ -146,6 +163,7 @@ def process_day(monday, day, excepted_officers=None):
 # and especially for the weekly counter
 # in case of a bridging_day the counter is incremented twice
 def set_officer(monday, day, selected_officer):
+    print(f'[DEBUG] {selected_officer.name} is chosen for {get_day_str(day)}')
     selected_officers_for_day[day].append(selected_officer)
     officer_times_weekly[monday][selected_officer] += 1
     selected_officer.officer_count += 1
@@ -207,23 +225,34 @@ def load_holidays():
         raise Exception('There is no bridging days data')
 
 
-def load_last_friday_officers():
+def load_last_selection():
     try:
         _officer_selection = json.load(open("data/officer_selection.json"))
     except FileNotFoundError:
-        print("[INFO]: there is NO officer selection, so the last friday can't be loaded")
+        print("[INFO]: there is NO officer selection")
         return
     except json.decoder.JSONDecodeError:
-        print("[INFO]: there is NO officer selection, so the last friday can't be loaded")
+        print("[INFO]: there is NO officer selection")
         return
 
-    print("[INFO]: there IS an officer selection, so the last friday can be loaded")
-    global last_friday_officers
+    print("[INFO]: there IS an officer selection")
 
-    last_friday_officers_names = _officer_selection[sorted(list(_officer_selection))[-1]]
-    for last_friday_officers_name in last_friday_officers_names:
-        if get_officer_by_name(last_friday_officers_name):
-            last_friday_officers.append(get_officer_by_name(last_friday_officers_name))
+    for day, selected_officers in _officer_selection.items():
+        day_obj = datetime.datetime.strptime(day, "%Y-%m-%d").date()
+        monday = day_obj - datetime.timedelta(days=day_obj.weekday())
+        if not officer_times_weekly.get(monday):
+            officer_times_weekly[monday] = {}
+
+        selected_officers_for_day[day_obj] = []
+        for _officer in selected_officers:
+            officer_obj = get_officer_by_name(_officer)
+            if not officer_obj:
+                continue
+            selected_officers_for_day[day_obj].append(officer_obj)
+
+            if not officer_times_weekly[monday].get(officer_obj):
+                officer_times_weekly[monday][officer_obj] = 0
+            officer_times_weekly[monday][officer_obj] += 1
 
 
 def get_officer_by_name(name):
@@ -268,7 +297,7 @@ def main():
 
     load_holidays()
 
-    load_last_friday_officers()
+    load_last_selection()
 
     # the following is the centerpiece of the script, because it loops over the selected weeks and chooses an officer
     current_monday = START_DATE
