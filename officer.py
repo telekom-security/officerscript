@@ -1,13 +1,14 @@
 import datetime
 import json
 import random
+import logging
 
 from model import Officer
 
 ##########################################################
 # INPUT:
 START_DATE = datetime.date(day=3, month=7, year=2023)  # has to be a monday
-END_DATE = datetime.date(day=29, month=9, year=2023)  # has to be a friday
+END_DATE = datetime.date(day=28, month=7, year=2023)  # has to be a friday
 ##########################################################
 
 
@@ -18,7 +19,7 @@ officers = []  # this list will be filled with officer objects which holds their
 selected_officers_for_day = {}  # this dict will contain a list of selected officers per day
 officer_times_weekly = {}  # init variable officer_times_weekly which saves the count per officer per week
 MAX_DUTIE_PER_WEEK = 3
-OFFICERS_PER_DAY = 2
+OFFICERS_PER_DAY = 3
 
 
 # function which returns the next_monday based on the last_monday
@@ -92,6 +93,18 @@ def load_officer_who_could_work(day):
             if officer in selected_officers_for_day.get(day + datetime.timedelta(days=7), []):
                 continue  # skip officer if he will work next friday (for partial generation)
 
+        if get_day_str(day) in bridging_days.get(officer.country).get(officer.state) and day.weekday() == 1:  # tuesday
+            if officer in selected_officers_for_day.get(day - datetime.timedelta(days=4), []):
+                continue  # skip officer if he was working last friday
+            if officer in selected_officers_for_day.get(day + datetime.timedelta(days=3), []):
+                continue  # skip officer if he will be working on next friday (for partial generation)
+
+        if get_day_str(day) in bridging_days.get(officer.country).get(officer.state) and day.weekday() == 3:  # thursday
+            if officer in selected_officers_for_day.get(day - datetime.timedelta(days=3), []):
+                continue  # skip officer if he was working last monday
+            if officer in selected_officers_for_day.get(day + datetime.timedelta(days=4), []):
+                continue  # skip officer if he will work next monday (for partial generation)
+
         # if there is no exclusion criteria
         can_work.append(officer)
 
@@ -116,11 +129,10 @@ def process_day(monday, day):
         officer_times_weekly_by_count[officer_times_weekly[monday].get(officer)].append(officer)
 
     officers_needed = OFFICERS_PER_DAY - len(selected_officers_for_day[day])
-    print(f'[DEBUG] Officers needed for {get_day_str(day)}: {officers_needed}')
+    logging.debug(f'Officers needed for {get_day_str(day)}: {officers_needed}')
 
     if len(can_work) < officers_needed:
-        print(f'[WARNING] Not enough possible officers for {get_day_str(day)}')
-        return
+        logging.warning(f'Not enough possible officers for {get_day_str(day)}')
 
     # try to lower the officer per week rate by choosing the officers which no / fewer duties first
     for x_sessions in range(MAX_DUTIE_PER_WEEK):
@@ -155,21 +167,22 @@ def process_day(monday, day):
             break
 
     if len(selected_officers_for_day[day]) < OFFICERS_PER_DAY:
-        print(f'[WARNING] Just {len(selected_officers_for_day[day])} officer(s) for {get_day_str(day)}')
+        logging.warning(f'Just {len(selected_officers_for_day[day])} officer(s) for {get_day_str(day)}')
 
 
 # function which is executed every time an officer for a day is chosen
 # saves the officer for the day, increments the counter for the selected officer generally
 # and especially for the weekly counter
 # in case of a bridging_day the counter is incremented twice
-def set_officer(monday, day, selected_officer):
-    print(f'[DEBUG] {selected_officer.name} is chosen for {get_day_str(day)}')
+def set_officer(monday, day, selected_officer: Officer):
+    logging.debug(f'{selected_officer.name} is chosen for {get_day_str(day)}')
     selected_officers_for_day[day].append(selected_officer)
     officer_times_weekly[monday][selected_officer] += 1
     selected_officer.officer_count += 1
 
     # count extreme officer duties (e.g. on Monday & Friday) double
-    if day.weekday() in [0, 4] or day.strftime("YYYY-MM-DD") in bridging_days:
+    if day.weekday() in [0, 4] or \
+            get_day_str(day) in bridging_days.get(selected_officer.country).get(selected_officer.state):
         selected_officer.officer_extreme_count += 1
 
 
@@ -180,20 +193,20 @@ def load_officers():
 
     try:
         officer_vacation_data = json.load(open("data/officer_vacation.json"))  # source for officer vacation data
-        print('[INFO]: there IS vacation data which will be used to calculate officer duty')
+        logging.info('there IS vacation data which will be used to calculate officer duty')
     except json.decoder.JSONDecodeError:
         officer_vacation_data = {}
-        print('[WARNING]: there is NO vacation data which will be used to calculate officer duty')
+        logging.warning('there is NO vacation data which will be used to calculate officer duty')
 
     try:
         officer_dynamic_data = json.load(open("data/officer_dynamic.json"))  # source for officer dynamic data
-        print('[INFO]: there IS dynamic data which will be used to calculate officer duty')
+        logging.info('there IS dynamic data which will be used to calculate officer duty')
     except FileNotFoundError:
         officer_dynamic_data = {}
-        print('[WARNING]: there is NO dynamic data which will be used to calculate officer duty')
+        logging.warning('there is NO dynamic data which will be used to calculate officer duty')
     except json.decoder.JSONDecodeError:
         officer_dynamic_data = {}
-        print('[WARNING]: there is NO dynamic data which will be used to calculate officer duty')
+        logging.warning('there is NO dynamic data which will be used to calculate officer duty')
 
     for data in officer_static_data:
         _officer_dynamic_data = officer_dynamic_data.get(data.get('name'))
@@ -215,27 +228,29 @@ def load_officers():
 
 def load_holidays():
     global holidays
-    holidays = json.load(open("data/holidays.json"))  # source for holidays
+    holidays = json.load(open("data/holidays.json"))
     if not holidays:
-        raise Exception('There is no holidays data')
+        logging.critical('there is NO holidays data')
+        exit(-1)
 
     global bridging_days
-    bridging_days = json.load(open("data/bridging_days.json"))  # source for bridging_days
+    bridging_days = json.load(open("data/bridging_days.json"))
     if not bridging_days:
-        raise Exception('There is no bridging days data')
+        logging.critical('there is NO bridging days data')
+        exit(-1)
 
 
 def load_last_selection():
     try:
         _officer_selection = json.load(open("data/officer_selection.json"))
     except FileNotFoundError:
-        print("[INFO]: there is NO officer selection")
+        logging.info("there is NO officer selection")
         return
     except json.decoder.JSONDecodeError:
-        print("[INFO]: there is NO officer selection")
+        logging.info("there is NO officer selection")
         return
 
-    print("[INFO]: there IS an officer selection")
+    logging.info("there IS an officer selection")
 
     for day, selected_officers in _officer_selection.items():
         day_obj = datetime.datetime.strptime(day, "%Y-%m-%d").date()
@@ -288,10 +303,16 @@ def export_officer_dynamics():
 
 
 def main():
+    logging.basicConfig(level=logging.DEBUG,
+                        format='%(asctime)s - %(levelname)s - %(message)s',
+                        datefmt='%y-%m-%d %H:%M:%S')
+
     if not START_DATE.weekday() == 0 or not END_DATE.weekday() == 4:
-        exit(-1)  # start date has to be a monday and end date has to be a friday
+        logging.critical("start date has to be a monday and end date has to be a friday")
+        exit(-1)
     if not START_DATE.year == END_DATE.year:
-        exit(-1)  # start and end date have to be in the same year
+        logging.critical("start date and end date have to be in the same year")
+        exit(-1)
 
     load_officers()
 

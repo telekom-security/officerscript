@@ -1,7 +1,5 @@
-#
-
 class Officer:
-    def __init__(self, static_data, vacation, officer_count, officer_extreme_count):
+    def __init__(self, static_data, vacation=None, officer_count=None, officer_extreme_count=None):
         self.__name = static_data.get('name')
         self.__status = static_data.get('status')
         self.__country = static_data.get('country')
